@@ -109,6 +109,10 @@ esac
 kill "$serveur"
 wait "$serveur" 2>/dev/null || true
 trap - EXIT
+# Verrou laissé par le serveur de contrôle : embarqué dans une couche de
+# l'image, il serait recopié (copy-up overlayfs) à l'ouverture, et Lucene
+# refuserait de démarrer (« Underlying file changed by an external force »).
+find "$SORTIE" -name node.lock -delete
 
 date -u +%Y-%m-%dT%H:%M:%SZ > "${SORTIE}/index-construit-le"
 echo "$url" > "${SORTIE}/index-source"

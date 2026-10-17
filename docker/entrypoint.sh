@@ -13,6 +13,11 @@ set -eu
 
 echo "[photon] index ($(cat /photon/index-pays 2>/dev/null || echo "?")) construit le $(cat /photon/index-construit-le 2>/dev/null || echo "?") depuis $(cat /photon/index-source 2>/dev/null || echo "?")"
 
+# Un verrou OpenSearch présent dans une couche de l'image empêche le démarrage
+# sur overlayfs (« Underlying file changed by an external force ») : on le
+# supprime, OpenSearch en recrée un dans la couche inscriptible du conteneur.
+find /photon/photon_data -name node.lock -delete 2>/dev/null || true
+
 # shellcheck disable=SC2086  # JAVA_OPTS et PHOTON_OPTIONS : listes d'options à découper
 exec java ${JAVA_OPTS} --enable-native-access=ALL-UNNAMED \
     -jar /photon/photon.jar serve \
