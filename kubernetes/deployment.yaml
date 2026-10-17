@@ -53,6 +53,13 @@ spec:
               value: "fr"
             - name: PHOTON_MAX_RESULTATS
               value: "20"
+            # Index recopié sur un emptyDir : OpenSearch refuse parfois d'écrire
+            # dans la couche overlayfs de l'image (OpenShift/CRI-O).
+            - name: PHOTON_REPERTOIRE_TRAVAIL
+              value: /travail
+          volumeMounts:
+            - name: travail
+              mountPath: /travail
           resources:
             requests:
               cpu: 250m
@@ -84,3 +91,7 @@ spec:
             periodSeconds: 30
             timeoutSeconds: 5
             failureThreshold: 5
+      volumes:
+        - name: travail
+          emptyDir:
+            sizeLimit: 3Gi
