@@ -9,13 +9,38 @@ Image Docker prête à l'emploi de [Photon](https://github.com/komoot/photon), l
 
 Ce dépôt fournit l'image et des exemples de déploiement. **Le déploiement et l'exploitation restent à votre charge.**
 
+## Image publiée : inutile de la reconstruire
+
+Une image prête à l'emploi est publiée sur Docker Hub, construite avec les valeurs par défaut de ce dépôt :
+
+```
+docker.io/sidymohamed12/photon-senegal:latest      # ou un tag fixe : v1, v2, v3…
+```
+
+| Réglage                         | Valeur de l'image publiée                                      |
+| ------------------------------- | -------------------------------------------------------------- |
+| Pays importés                   | Sénégal (`PHOTON_PAYS=sn`)                                     |
+| Langues des noms                | français, anglais (`fr,en`)                                    |
+| Langue par défaut des résultats | français                                                       |
+| Lieu de contrôle du build       | Dakar                                                          |
+| Architectures                   | `linux/amd64`, `linux/arm64`, `linux/s390x`                    |
+| Données                         | dump GraphHopper de la semaine (nouvelle version chaque lundi) |
+
+Si ces valeurs vous conviennent, **utilisez directement cette image** : il n'y a rien à construire ni à configurer dans GitHub. La date des données figure dans le label `org.openstreetmap.donnees.date` de l'image, et dans les logs au démarrage. Préférez un tag fixe (`vN`) à `latest` en production : vous choisissez ainsi le moment des mises à jour.
+
+Ne reconstruisez l'image que pour changer de pays ou de langues, ou pour la publier sur votre propre registre (voir [Construire et publier](#construire-et-publier-avec-github-actions)).
+
 ## Démarrage rapide
 
+Avec l'image publiée :
+
 ```bash
-docker compose up --build        # 1er build : téléchargement du dump et import
+docker run -d --name photon -p 2322:2322 docker.io/sidymohamed12/photon-senegal:latest
 curl 'localhost:2322/api?q=Sanda&limit=5'
 curl 'localhost:2322/reverse?lat=14.6735&lon=-17.439&limit=1'
 ```
+
+Ou en construisant l'image depuis ce dépôt : `docker compose up --build`. Le premier build télécharge le dump et fait l'import.
 
 L'API est celle de Photon : `/api` (recherche et autocomplétion), `/reverse` (géocodage inverse) et `/status`. Les paramètres sont décrits dans la [documentation de l'API Photon](https://github.com/komoot/photon/blob/master/docs/api-v1.md). Les résultats sont au format GeoJSON et portent les identifiants OSM (`osm_type`, `osm_id`).
 
@@ -53,18 +78,18 @@ dump JSON GraphHopper ─ zstd ─► import -country-codes sn ──►  démar
 
 Le workflow `.github/workflows/photon-image.yml` publie l'image à chaque push sur `main`, chaque lundi pour reprendre les données de la semaine, et sur lancement manuel. Les versions sont taguées `v1`, `v2`… et `latest`.
 
-Dans *Settings → Secrets and variables → Actions* :
+Dans _Settings → Secrets and variables → Actions_ :
 
-| Type | Nom | Défaut | Rôle |
-|---|---|---|---|
-| Variable | `DOCKERHUB_USERNAME` | — | Compte ou organisation Docker Hub (obligatoire) |
-| Secret | `DOCKERHUB_TOKEN` | — | Jeton Docker Hub « Read & Write » (obligatoire) |
-| Variable | `DOCKERHUB_REPOSITORY` | `photon-senegal` | Nom de l'image |
-| Variable | `PLATEFORMES` | `linux/amd64,linux/arm64,linux/s390x` | Architectures publiées |
-| Variable | `PHOTON_PAYS` | `sn` | Pays importés (codes ISO, séparés par des virgules) |
-| Variable | `PHOTON_LIEU_CONTROLE` | `Dakar` | Lieu à trouver pour valider l'index |
-| Variable | `PHOTON_LANGUES` | `fr,en` | Langues des noms importés |
-| Variable | `PHOTON_DUMP_URL` | recherche automatique (Sénégal) | Dump à importer, obligatoire hors Sénégal |
+| Type     | Nom                    | Défaut                                | Rôle                                                |
+| -------- | ---------------------- | ------------------------------------- | --------------------------------------------------- |
+| Variable | `DOCKERHUB_USERNAME`   | —                                     | Compte ou organisation Docker Hub (obligatoire)     |
+| Secret   | `DOCKERHUB_TOKEN`      | —                                     | Jeton Docker Hub « Read & Write » (obligatoire)     |
+| Variable | `DOCKERHUB_REPOSITORY` | `photon-senegal`                      | Nom de l'image                                      |
+| Variable | `PLATEFORMES`          | `linux/amd64,linux/arm64,linux/s390x` | Architectures publiées                              |
+| Variable | `PHOTON_PAYS`          | `sn`                                  | Pays importés (codes ISO, séparés par des virgules) |
+| Variable | `PHOTON_LIEU_CONTROLE` | `Dakar`                               | Lieu à trouver pour valider l'index                 |
+| Variable | `PHOTON_LANGUES`       | `fr,en`                               | Langues des noms importés                           |
+| Variable | `PHOTON_DUMP_URL`      | recherche automatique (Sénégal)       | Dump à importer, obligatoire hors Sénégal           |
 
 Pour construire sans GitHub :
 
@@ -79,7 +104,7 @@ docker buildx build --platform linux/amd64,linux/arm64,linux/s390x \
 
 ### Kubernetes ou OpenShift
 
-1. Remplacer `newName` dans `kubernetes/kustomization.yaml` par votre image.
+1. `kubernetes/kustomization.yaml` pointe vers l'image publiée. Choisir le tag (`newTag`), ou remplacer `newName` par votre propre image.
 2. Appliquer :
 
 ```bash
@@ -94,22 +119,22 @@ Photon n'a ni authentification ni limite de débit. Les exemples le gardent donc
 ### Docker
 
 ```bash
-docker run -d --name photon -p 2322:2322 <registre>/photon-senegal:v1
+docker run -d --name photon -p 2322:2322 docker.io/sidymohamed12/photon-senegal:v1
 ```
 
 ### Mettre à jour les données
 
-Publier une nouvelle image (le workflow le fait chaque lundi), puis déployer le nouveau tag. Avec deux répliques, la mise à jour progressive se fait sans coupure.
+Une nouvelle version de l'image publiée sort chaque lundi, et le workflow fait de même pour votre propre image. Il suffit de déployer le nouveau tag. Avec deux répliques, la mise à jour progressive se fait sans coupure.
 
 ## Configuration à l'exécution
 
-| Variable | Défaut | Rôle |
-|---|---|---|
-| `JAVA_OPTS` | `-XX:MaxRAMPercentage=50 -XX:+ExitOnOutOfMemoryError` | Options JVM |
-| `PHOTON_LANGUE_DEFAUT` | `fr` | Langue des résultats quand la requête ne précise pas `lang` |
-| `PHOTON_MAX_RESULTATS` | `20` | Plafond du paramètre `limit` |
-| `PHOTON_OPTIONS` | — | Options supplémentaires de `photon serve`, par exemple `-metrics-enable prometheus` ou `-cors-any` |
-| `PORT` | `2322` | Port d'écoute |
+| Variable               | Défaut                                                | Rôle                                                                                               |
+| ---------------------- | ----------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `JAVA_OPTS`            | `-XX:MaxRAMPercentage=50 -XX:+ExitOnOutOfMemoryError` | Options JVM                                                                                        |
+| `PHOTON_LANGUE_DEFAUT` | `fr`                                                  | Langue des résultats quand la requête ne précise pas `lang`                                        |
+| `PHOTON_MAX_RESULTATS` | `20`                                                  | Plafond du paramètre `limit`                                                                       |
+| `PHOTON_OPTIONS`       | —                                                     | Options supplémentaires de `photon serve`, par exemple `-metrics-enable prometheus` ou `-cors-any` |
+| `PORT`                 | `2322`                                                | Port d'écoute                                                                                      |
 
 **Ressources :** pour le Sénégal, 1 Gio demandé et 2 Gio de limite par pod suffisent. La moitié sert de heap Java, le reste de cache disque pour l'index.
 

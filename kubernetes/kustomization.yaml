@@ -1,7 +1,8 @@
 # Déploiement (Kubernetes ou OpenShift) :
 #   kubectl apply -k kubernetes/      ou      oc apply -k kubernetes/
 #
-# Avant le premier déploiement : remplacer newName par votre image.
+# Image publiée par défaut (valeurs par défaut du dépôt) ; remplacer newName
+# pour utiliser votre propre image.
 # Nouvelle version (nouvelles données) : changer newTag, puis réappliquer.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -18,5 +19,5 @@ resources:
 
 images:
   - name: photon
-    newName: docker.io/votre-compte/photon-senegal
+    newName: docker.io/sidymohamed12/photon-senegal
     newTag: v1
