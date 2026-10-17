@@ -1,0 +1,32 @@
+# Test local de Photon (amd64 ou arm64).
+#
+#   docker compose up --build      # 1er build : téléchargement du dump + import
+#   curl 'localhost:2322/api?q=Sanda&limit=5'
+#
+# Autre pays : docker compose build --build-arg PHOTON_PAYS=… \
+#   --build-arg PHOTON_DUMP_URL=… --build-arg PHOTON_LIEU_CONTROLE=…
+#
+# Pas de volume : l'index est dans l'image. Pour des données fraîches :
+#   docker compose build --build-arg DONNEES_DU=$(date +%F) && docker compose up
+services:
+  photon:
+    build:
+      context: .
+    image: photon-senegal:local
+    container_name: photon
+    ports:
+      - "2322:2322"
+    environment:
+      JAVA_OPTS: "-Xmx1g -XX:+ExitOnOutOfMemoryError"
+    healthcheck:
+      # bash /dev/tcp : aucune dépendance à curl dans l'image JRE
+      test:
+        - CMD
+        - bash
+        - -c
+        - exec 3<>/dev/tcp/127.0.0.1/2322 && printf 'GET /status HTTP/1.0\r\n\r\n' >&3 && grep -q '"Ok"' <&3
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 1m
+    restart: unless-stopped

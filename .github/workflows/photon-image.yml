@@ -1,0 +1,111 @@
+# Image Docker Photon (index d'un ou plusieurs pays), publiée sur Docker Hub.
+#
+# À chaque push sur main, chaque lundi (dumps GraphHopper hebdomadaires) ou
+# en lancement manuel :
+#   1. l'étape « index » du Dockerfile, native sur le runner, télécharge le
+#      dump et importe les pays demandés ;
+#   2. l'image multi-architecture est publiée, taguée v1, v2… et latest ;
+#   3. le tag git vN est posé sur le commit.
+#
+# Pas de QEMU : l'étape finale ne fait que des COPY, quelle que soit la plateforme.
+#
+# Settings → Secrets and variables → Actions :
+#   Variable DOCKERHUB_USERNAME     compte ou organisation Docker Hub (obligatoire)
+#   Secret   DOCKERHUB_TOKEN        jeton Docker Hub « Read & Write » (obligatoire)
+#   Variable DOCKERHUB_REPOSITORY   nom de l'image — défaut : photon-senegal
+#   Variable PLATEFORMES            défaut : linux/amd64,linux/arm64,linux/s390x
+#   Variable PHOTON_PAYS            codes pays importés — défaut : sn
+#   Variable PHOTON_LIEU_CONTROLE   lieu à trouver pour valider l'index — défaut : Dakar
+#   Variable PHOTON_LANGUES         langues des noms — défaut : fr,en
+#   Variable PHOTON_DUMP_URL        dump précis (obligatoire hors Sénégal)
+name: Image Photon
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 3 * * 1"   # lundi 03:17 UTC : données OSM de la semaine
+  workflow_dispatch:
+
+concurrency:
+  group: image-photon
+  cancel-in-progress: false
+
+env:
+  IMAGE: docker.io/${{ vars.DOCKERHUB_USERNAME }}/${{ vars.DOCKERHUB_REPOSITORY || 'photon-senegal' }}
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write   # pose du tag git vN
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - id: version
+        run: |
+          derniere=$(git tag -l 'v[0-9]*' | sed -n 's/^v\([0-9][0-9]*\)$/\1/p' | sort -n | tail -1)
+          version="v$(( ${derniere:-0} + 1 ))"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+          echo "Version : $version"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ steps.version.outputs.version }}
+            type=raw,value=latest
+          labels: |
+            org.openstreetmap.donnees.date=${{ steps.version.outputs.date }}
+            org.openstreetmap.donnees.pays=${{ vars.PHOTON_PAYS || 'sn' }}
+
+      - id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ vars.PLATEFORMES || 'linux/amd64,linux/arm64,linux/s390x' }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            DONNEES_DU=${{ steps.version.outputs.date }}
+            PHOTON_DUMP_URL=${{ vars.PHOTON_DUMP_URL }}
+            PHOTON_PAYS=${{ vars.PHOTON_PAYS }}
+            PHOTON_LIEU_CONTROLE=${{ vars.PHOTON_LIEU_CONTROLE }}
+            PHOTON_LANGUES=${{ vars.PHOTON_LANGUES }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Tag git ${{ steps.version.outputs.version }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          git tag "$VERSION" "$GITHUB_SHA"
+          git push origin "$VERSION"
+
+      - name: Résumé
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          DATE: ${{ steps.version.outputs.date }}
+          PAYS: ${{ vars.PHOTON_PAYS || 'sn' }}
+        run: |
+          {
+            echo "### Image publiée : ${VERSION}"
+            echo "- \`${IMAGE}:${VERSION}\`"
+            echo "- \`${IMAGE}:latest\`"
+            echo "- Digest : \`${DIGEST}\`"
+            echo "- Données OSM du ${DATE}, pays : ${PAYS}"
+          } >> "$GITHUB_STEP_SUMMARY"

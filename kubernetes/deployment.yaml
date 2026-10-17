@@ -1,0 +1,86 @@
+# Photon : index embarqué dans l'image, aucun volume.
+#
+# - Sans état : 2 répliques et mise à jour progressive sans coupure
+#   (nouvelle image = nouvelles données, le service reste disponible).
+# - Démarrage en quelques secondes (pas d'import dans le pod).
+# - Aucun UID fixé : compatible avec la SCC restricted-v2 d'OpenShift
+#   (UID arbitraire) comme avec un Kubernetes standard (UID 1001 de l'image).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: photon
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: photon
+  template:
+    metadata:
+      labels:
+        app: photon
+    spec:
+      terminationGracePeriodSeconds: 30
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app: photon
+      containers:
+        - name: photon
+          image: photon
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 2322
+          env:
+            # Heap = 50 % de la limite ; le reste sert au cache des fichiers d'index.
+            - name: JAVA_OPTS
+              value: "-XX:MaxRAMPercentage=50 -XX:+ExitOnOutOfMemoryError"
+            - name: PHOTON_LANGUE_DEFAUT
+              value: "fr"
+            - name: PHOTON_MAX_RESULTATS
+              value: "20"
+          resources:
+            requests:
+              cpu: 250m
+              memory: 1Gi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          startupProbe:
+            httpGet:
+              path: /status
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60   # 5 min
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: http
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 5
